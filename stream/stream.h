@@ -279,7 +279,9 @@ struct AVDictionary;
 void mp_setup_av_network_options(struct AVDictionary **dict,
                                  const char *target_fmt,
                                  struct mpv_global *global,
-                                 struct mp_log *log);
+                                 struct mp_log *log,
+                                 const char *user_agent,
+                                 const char *referrer);
 
 void stream_print_proto_list(struct mp_log *log);
 char **stream_get_proto_list(bool safe_only);

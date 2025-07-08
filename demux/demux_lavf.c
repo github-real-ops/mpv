@@ -1023,7 +1023,7 @@ static int demux_open_lavf(demuxer_t *demuxer, enum demux_check check)
 
     if ((priv->avif_flags & AVFMT_NOFILE) || priv->format_hack.no_stream) {
         mp_setup_av_network_options(&dopts, priv->avif->name,
-                                    demuxer->global, demuxer->log);
+                                    demuxer->global, demuxer->log, NULL, NULL);
         // This might be incorrect.
         demuxer->seekable = true;
     } else {

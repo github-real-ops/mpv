@@ -181,15 +181,23 @@ static int interrupt_cb(void *ctx)
 static const char * const prefix[] = { "lavf://", "ffmpeg://" };
 
 void mp_setup_av_network_options(AVDictionary **dict, const char *target_fmt,
-                                 struct mpv_global *global, struct mp_log *log)
+                                 struct mpv_global *global, struct mp_log *log, 
+                                 const char *user_agent, const char *referrer)
 {
     void *temp = talloc_new(NULL);
     struct stream_lavf_params *opts =
         mp_get_config_group(temp, global, &stream_lavf_conf);
 
     // HTTP specific options (other protocols ignore them)
-    if (opts->useragent)
-        av_dict_set(dict, "user_agent", opts->useragent, 0);
+    if (opts->useragent || user_agent) {
+        const char *val;
+        if (user_agent) {
+            val = user_agent;
+        } else {
+            val = opts->useragent;
+        }
+        av_dict_set(dict, "user_agent", val, 0);
+    }
     if (opts->cookies_enabled) {
         char *file = opts->cookies_file;
         if (file && file[0])
@@ -212,9 +220,15 @@ void mp_setup_av_network_options(AVDictionary **dict, const char *target_fmt,
         av_dict_set(dict, "key_file", file, 0);
     }
     char *cust_headers = talloc_strdup(temp, "");
-    if (opts->referrer) {
+    if (opts->referrer || referrer) {
+        const char *val;
+        if (referrer) {
+            val = referrer;
+        } else {
+            val = opts->referrer;
+        }
         cust_headers = talloc_asprintf_append(cust_headers, "Referer: %s\r\n",
-                                              opts->referrer);
+                                              val);
     }
     if (opts->http_header_fields) {
         for (int n = 0; opts->http_header_fields[n]; n++) {
@@ -366,6 +380,51 @@ static int open_f(stream_t *stream)
     int flags = stream->mode == STREAM_WRITE ? AVIO_FLAG_WRITE : AVIO_FLAG_READ;
 
     const char *filename = stream->url;
+
+    char *stream_url = NULL;
+    const char *referrer = NULL;
+    const char *user_agent = NULL;
+    if (!strncmp(stream->url, "http:", 5) || !strncmp(stream->url, "https:", 6)) 
+    {
+        stream_url = strdup(filename);
+        char *tok = strtok(stream_url, "|"); // url
+
+        if (tok != NULL) 
+        {
+            filename = tok;
+            
+            tok = strtok(NULL, "|"); // header string
+            mp_verbose(stream->log, "Parsing headers '%s'...\n", tok);
+            tok = strtok(tok, ",=");
+            while (tok)
+            {
+                char *header = tok;
+                char *header_val = strtok(NULL, ",=");
+                if (header && header_val)
+                {
+                    if (!strcmp(header, "referrer"))
+                    {
+                        referrer = header_val;
+                    }
+                    else if (!strcmp(header, "user-agent"))
+                    {
+                        user_agent = header_val;
+                    }
+                    else
+                    {
+                        mp_verbose(stream->log, "Ignoring header '%s: %s'\n", header, header_val);
+                    }
+                }
+                else
+                {
+                    mp_warn(stream->log, "Incomplete header '%s'\n", header);
+                    break;
+                }
+                tok = strtok(NULL, ",=");
+            }                
+        } 
+    }
+    
     if (!filename) {
         MP_ERR(stream, "No URL\n");
         goto out;
@@ -404,7 +463,7 @@ static int open_f(stream_t *stream)
     av_dict_set(&dict, "reconnect", "1", 0);
     av_dict_set(&dict, "reconnect_delay_max", "7", 0);
 
-    mp_setup_av_network_options(&dict, NULL, stream->global, stream->log);
+    mp_setup_av_network_options(&dict, NULL, stream->global, stream->log, user_agent, referrer);
 
     AVIOInterruptCB cb = {
         .callback = interrupt_cb,
@@ -455,6 +514,8 @@ static int open_f(stream_t *stream)
 out:
     av_dict_free(&dict);
     talloc_free(temp);
+    if (stream_url)
+        free(stream_url);
     return res;
 }
 
