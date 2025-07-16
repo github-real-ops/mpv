@@ -525,9 +525,6 @@ struct vo {
 
     // current GPU context (--vo=gpu and --vo=gpu-next only)
     const char *context_name;
-
-    // composition swapchain (--d3d11-output-mode=composition only)
-    void *display_swapchain;
 };
 
 struct mpv_global;
@@ -562,7 +559,6 @@ double vo_get_vsync_interval(struct vo *vo);
 double vo_get_estimated_vsync_interval(struct vo *vo);
 double vo_get_estimated_vsync_jitter(struct vo *vo);
 double vo_get_display_fps(struct vo *vo);
-void * vo_get_display_swapchain(struct vo *vo);
 double vo_get_delay(struct vo *vo);
 void vo_discard_timing_info(struct vo *vo);
 struct vo_frame *vo_get_current_vo_frame(struct vo *vo);
