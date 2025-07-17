@@ -267,6 +267,9 @@ ok:
         return 0;
     }
 
+    char *param_names[128];
+    char *param_values[128];
+    int num_params = 0;
     char *title = NULL;
     while (line.len || !pl_eof(p)) {
         bstr line_dup = line;
@@ -278,9 +281,40 @@ ok:
             }
         } else if (bstr_startswith0(line_dup, "#EXT-X-")) {
             p->format = "hls";
+        } else if (bstr_eatstart0(&line_dup, "#EXTMPVOPT:")) {
+            bstr name, value;
+            if (bstr_split_tok(line_dup, "=", &name, &value) && value.len) {
+                bool param_exists = false;
+                int param_exists_index;
+                for (int n = 0; n < num_params; n++) {
+                    if (!strncmp(param_names[n], name.start, name.len)) {
+                        param_exists = true;
+                        param_exists_index = n;
+                    }
+                }
+                if (param_exists) {
+                    mp_verbose(p->log, "Setting existing param '%s=%.*s'...\n", param_names[param_exists_index],
+                               value.len, value.start);
+                    param_values[param_exists_index] = realloc(param_values[param_exists_index], value.len + 1);
+                    param_values[param_exists_index][value.len] = '\0';
+                    strncpy(param_values[param_exists_index], value.start, value.len);
+                } else {
+                    param_names[num_params] = malloc(name.len + 1);
+                    param_values[num_params] = malloc(value.len + 1);
+                    param_names[num_params][name.len] = '\0';
+                    param_values[num_params][value.len] = '\0';
+                    strncpy(param_names[num_params], name.start, name.len);
+                    strncpy(param_values[num_params], value.start, value.len);
+                    num_params += 1;
+                }
+            }
         } else if (line_dup.len > 0 && !bstr_startswith0(line_dup, "#")) {
             char *fn = bstrto0(NULL, line_dup);
             struct playlist_entry *e = playlist_entry_new(fn);
+            for (int n = 0; n < num_params; n++) {
+                mp_verbose(p->log, "Adding playlist entry param '%s=%s'...\n", param_names[n], param_values[n]);
+                playlist_entry_add_param(e, bstr0(param_names[n]), bstr0(param_values[n]));
+            }
             talloc_free(fn);
             e->title = talloc_steal(e, title);
             title = NULL;
@@ -291,6 +325,10 @@ ok:
     }
     pl_free_line(p, line);
     talloc_free(title);
+    for (int n = 0; n < num_params; n++) {
+        free(param_names[n]);
+        free(param_values[n]);
+    }
     return 0;
 }
 
